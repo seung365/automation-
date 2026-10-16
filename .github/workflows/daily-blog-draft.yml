@@ -66,23 +66,26 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
-            --max-turns 25
-            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(file:*),Bash(ls:*),Bash(rm product.img)"
+            --max-turns 40
+            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(head:*),Bash(sed:*),Bash(cut:*),Bash(sort:*),Bash(tr:*),Bash(file:*),Bash(ls:*),Bash(rm candidate.img),Bash(mv candidate.img product.img)"
           prompt: |
             post.md는 오늘 블로그 글 초안이다. 이 글의 썸네일용 제품 사진을 준비해. 사진 속 제품은 그대로 쓰고 배경만 블로그 배경으로 바꿔 합성한다.
 
-            1. 글의 대표 제품(카페 글이면 대표 메뉴) 1개의 실제 사진을 찾아 curl로 product.img에 저장해.
-               - 브랜드 공식몰·무신사·네이버 스토어·컬리 등 상품 페이지에서 og:image나 상품 이미지 URL을 찾아 받아.
-                 예: curl -sL -A "Mozilla/5.0" "<상품 페이지>" | grep -o 'og:image[^>]*'
-                     curl -sL -A "Mozilla/5.0" -o product.img "<이미지 URL>"
+            1. 글의 대표 제품(카페 글이면 대표 메뉴) 1개의 실제 사진을 찾아 curl로 candidate.img에 받아.
+               - 출처는 어디든 괜찮아. 공식몰·무신사·네이버 스토어·컬리 같은 판매처가 편하지만, 없으면 인터넷에 올라온 실제 상품 사진(다른 쇼핑몰, 리뷰 글, 기사 등)을 써도 돼. 단 실제 그 제품을 찍은 사진이어야 해.
+               - 상품 페이지에서 og:image나 상품 이미지 URL을 찾아 받아.
+                 예: curl -sL -A "Mozilla/5.0" "<상품 페이지>" | grep -o 'og:image[^>]*' | head -3
+                     curl -sL -A "Mozilla/5.0" -o candidate.img "<이미지 URL>"
                - 올리브영 페이지는 자동 다운로드가 막혀 있으니 쓰지 마.
-            2. `file product.img`로 크기를 보고, Read로 직접 열어 봐서 아래를 모두 만족할 때만 남겨. 아니면 다른 사진을 찾아.
+            2. `file candidate.img`로 크기를 보고, Read로 직접 열어 봐서 아래를 모두 만족하는지 확인해.
                - 사람·얼굴·손이 없는 제품 단독 사진 (모델 착용컷 금지)
                - 흰색이나 단색 배경, 제품 전체가 잘리지 않고 보임
                - 사진 위 글자·워터마크·스티커 없음
-               - 긴 변 1000px 이상. 작으면 같은 제품의 더 큰 사진을 다른 판매처에서 최소 2곳 더 찾아봐 (무신사 _big 이미지, 브랜드 공식몰 상세 이미지 등)
-               끝내 못 찾으면 `rm product.img`.
-            3. source.txt에 제품 사진을 가져온 상품 페이지 URL 한 줄만 저장해.
+               - 긴 변 1000px 이상. 작으면 같은 제품의 더 큰 사진을 다른 곳에서 최소 2곳 더 찾아봐 (무신사 _big 이미지, 다른 쇼핑몰 상세 이미지 등)
+            3. 통과하면 바로 이 두 가지를 해:
+               - source.txt에 사진을 가져온 페이지 URL 한 줄 저장
+               - `mv candidate.img product.img`
+               통과 못 하면 `rm candidate.img` 하고 다른 사진을 찾아. 끝내 못 찾으면 product.img 없이 끝내도 돼.
 
       - name: 썸네일 만들기 (제품 사진 배경 제거 + 배경 합성)
         id: thumb
@@ -122,7 +125,8 @@ jobs:
             curl -fsSL "$(jq -r '.[0].result_url' cut.json)" -o cut.png
             $py scripts/compose.py "backgrounds/$bg.jpg" cut.png thumb.jpg
             url="$(hf upload create thumb.jpg --json | jq -r .url)"
-            note="> 썸네일: [실제 제품 사진]($(head -n1 source.txt 2>/dev/null))에 배경만 합성했어요."
+            src="$(head -n1 source.txt 2>/dev/null || true)"
+            note="> 썸네일: ${src:+[}실제 제품 사진${src:+]($src)}에 배경만 합성했어요."
             if [ "$side" -lt 1000 ]; then note+=$'\n'"> ⚠️ 원본 사진이 작아서(${side}px) 제품을 작게 배치했어요."; fi
           else
             hf generate create z_image --prompt "$(cat mood.txt)" --wait --json > gen.json
