@@ -66,6 +66,9 @@ jobs:
 
             그리고 mood.txt에 이 글 분위기의 감성 무드컷 이미지 프롬프트를 영어 한 문단으로 써. (제품 사진을 못 구했을 때 썸네일로 쓴다. 사람 얼굴·브랜드 로고·글자 금지)
 
+      - name: 이미지 도구 준비
+        run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
+
       # 사진 찾기는 따로 돌린다 — 실패하거나 턴을 넘겨도 위에서 쓴 글은 그대로 이슈로 올라가고 썸네일만 무드컷으로 대체된다
       - uses: anthropics/claude-code-action@v1
         id: photo
@@ -74,7 +77,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --max-turns 40
-            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(head:*),Bash(sed:*),Bash(cut:*),Bash(sort:*),Bash(tr:*),Bash(file:*),Bash(ls:*),Bash(rm candidate.img),Bash(mv candidate.img product.img)"
+            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(head:*),Bash(sed:*),Bash(cut:*),Bash(sort:*),Bash(tr:*),Bash(file:*),Bash(ls:*),Bash(/tmp/py/bin/python scripts/preview.py),Bash(rm candidate.img),Bash(mv candidate.img product.img)"
           prompt: |
             post.md는 오늘 블로그 글 초안이다. 이 글의 썸네일용 제품 사진을 준비해. 사진 속 제품은 그대로 쓰고 배경만 블로그 배경으로 바꿔 합성한다.
 
@@ -84,7 +87,7 @@ jobs:
                  예: curl -sL -A "Mozilla/5.0" "<상품 페이지>" | grep -o 'og:image[^>]*' | head -3
                      curl -sL -A "Mozilla/5.0" -o candidate.img "<이미지 URL>"
                - 올리브영 페이지는 자동 다운로드가 막혀 있으니 쓰지 마.
-            2. `file candidate.img`로 크기를 보고, Read로 직접 열어 봐서 아래를 모두 만족하는지 확인해.
+            2. `/tmp/py/bin/python scripts/preview.py`를 실행하면 크기가 출력되고 candidate_preview.jpg(축소본)가 생겨. 이걸 Read로 직접 열어 봐서 아래를 모두 만족하는지 확인해. (원본을 줄이는 다른 방법은 쓰지 마)
                - 사람·얼굴·손이 없는 제품 단독 사진 (모델 착용컷 금지)
                - 흰색이나 단색 배경, 제품 전체가 잘리지 않고 보임
                - 사진 위 글자·워터마크·스티커 없음
@@ -120,8 +123,7 @@ jobs:
           mkdir -p "$(dirname "$HIGGSFIELD_CREDENTIALS_PATH")"
           (umask 077; printf '%s' "$HIGGSFIELD_CREDENTIALS" > "$HIGGSFIELD_CREDENTIALS_PATH")
 
-          python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
-          py=/tmp/py/bin/python
+          py=/tmp/py/bin/python # '이미지 도구 준비' 단계에서 설치
 
           # ponytail: CLI가 응답 없이 멈추는 경우가 있어 3분 제한 + 1회 재시도
           hf() { for _ in 1 2; do timeout 180 ./hf "$@" && return 0; echo "hf 재시도"; done; return 1; }
@@ -171,4 +173,9 @@ jobs:
             printf '\n> ⚠️ 썸네일 생성 실패 — Actions 로그를 확인해 주세요.\n' >> post.md
           fi
           title="$(head -n1 post.md | sed 's/^# *//')"
-          gh issue create --title "[$TODAY] $title" --body-file post.md
+          # GitHub API가 가끔 일시 오류(GraphQL: Something went wrong)를 내서 최대 3번 시도
+          for i in 1 2 3; do
+            gh issue create --title "[$TODAY] $title" --body-file post.md && exit 0
+            echo "이슈 생성 재시도 ($i)"; sleep 15
+          done
+          exit 1
