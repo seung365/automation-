@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "0 0 * * *" # 매일 09:00 KST
   workflow_dispatch:
+    inputs:
+      day:
+        description: "테스트용 요일 (Mon~Sun). 비우면 오늘"
+        required: false
 
 # Higgsfield 갱신 토큰은 1회용이라 두 실행이 겹치면 한쪽 인증이 끊긴다
 concurrency:
@@ -27,7 +31,9 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: 오늘 날짜
-        run: echo "TODAY=$(TZ=Asia/Seoul date '+%Y-%m-%d %a')" >> "$GITHUB_ENV"
+        env:
+          DAY: ${{ inputs.day }}
+        run: echo "TODAY=$(TZ=Asia/Seoul date '+%Y-%m-%d') ${DAY:-$(TZ=Asia/Seoul date +%a)}" >> "$GITHUB_ENV"
 
       - name: 내 블로그 최근 글 가져오기
         run: curl -fsSL https://rss.blog.naver.com/oooozzii.xml -o recent-posts.xml || echo "RSS를 가져오지 못했어요"
@@ -62,6 +68,7 @@ jobs:
 
       # 사진 찾기는 따로 돌린다 — 실패하거나 턴을 넘겨도 위에서 쓴 글은 그대로 이슈로 올라가고 썸네일만 무드컷으로 대체된다
       - uses: anthropics/claude-code-action@v1
+        id: photo
         continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -87,6 +94,17 @@ jobs:
                - `mv candidate.img product.img`
                통과 못 하면 `rm candidate.img` 하고 다른 사진을 찾아. 끝내 못 찾으면 product.img 없이 끝내도 돼.
 
+      - name: 사진 찾기 기록 (실행한 명령 · 거부된 명령)
+        if: always()
+        env:
+          EXEC_FILE: ${{ steps.photo.outputs.execution_file }}
+        run: |
+          [ -f "$EXEC_FILE" ] || exit 0
+          echo "== 거부된 명령"
+          jq -r '[.. | objects | select(has("permission_denials")) | .permission_denials[]?] | .[] | "\(.tool_name): \(.tool_input.command // (.tool_input | tostring))"' "$EXEC_FILE" | cut -c1-300 || true
+          echo "== 실행한 Bash 명령"
+          jq -r '.. | objects | select(.type == "tool_use" and .name == "Bash") | .input.command' "$EXEC_FILE" | cut -c1-300 || true
+
       - name: 썸네일 만들기 (제품 사진 배경 제거 + 배경 합성)
         id: thumb
         continue-on-error: true
@@ -108,7 +126,7 @@ jobs:
           # ponytail: CLI가 응답 없이 멈추는 경우가 있어 3분 제한 + 1회 재시도
           hf() { for _ in 1 2; do timeout 180 ./hf "$@" && return 0; echo "hf 재시도"; done; return 1; }
 
-          case "$(TZ=Asia/Seoul date +%a)" in
+          case "${TODAY##* }" in
             Mon | Fri) bg=beauty-cream-sheet ;;
             Tue | Sat) bg=fashion-white-linen ;;
             Wed | Sun) bg=cafe-linen-napkin ;;
