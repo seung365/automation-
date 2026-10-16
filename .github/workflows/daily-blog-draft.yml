@@ -37,7 +37,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --max-turns 30
-            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*)"
+            --allowedTools "Read,Write,WebSearch,WebFetch"
           prompt: |
             오늘은 ${{ env.TODAY }}이다. 네이버 블로그 "oooozzii"에 올릴 글 초안 한 편을 써서 post.md 파일로 저장해.
 
@@ -58,20 +58,31 @@ jobs:
             - 사진 들어갈 자리는 [사진: 설명]으로 표시.
             - 첫 줄은 "# 글 제목", 그 아래 본문. 본문은 1500자 안팎.
 
-            그리고 썸네일용 제품 사진을 준비해. 제품 사진은 그대로 쓰고 배경만 블로그 배경으로 바꿔 합성한다.
+            그리고 mood.txt에 이 글 분위기의 감성 무드컷 이미지 프롬프트를 영어 한 문단으로 써. (제품 사진을 못 구했을 때 썸네일로 쓴다. 사람 얼굴·브랜드 로고·글자 금지)
 
-            1. 오늘 글의 대표 제품(카페 글이면 대표 메뉴) 1개의 실제 사진을 찾아 curl로 product.img에 저장해.
+      # 사진 찾기는 따로 돌린다 — 실패하거나 턴을 넘겨도 위에서 쓴 글은 그대로 이슈로 올라가고 썸네일만 무드컷으로 대체된다
+      - uses: anthropics/claude-code-action@v1
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --max-turns 25
+            --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(file:*),Bash(ls:*),Bash(rm product.img)"
+          prompt: |
+            post.md는 오늘 블로그 글 초안이다. 이 글의 썸네일용 제품 사진을 준비해. 사진 속 제품은 그대로 쓰고 배경만 블로그 배경으로 바꿔 합성한다.
+
+            1. 글의 대표 제품(카페 글이면 대표 메뉴) 1개의 실제 사진을 찾아 curl로 product.img에 저장해.
                - 브랜드 공식몰·무신사·네이버 스토어·컬리 등 상품 페이지에서 og:image나 상품 이미지 URL을 찾아 받아.
-                 예: curl -sL -A "Mozilla/5.0" -o product.img "<이미지 URL>"
+                 예: curl -sL -A "Mozilla/5.0" "<상품 페이지>" | grep -o 'og:image[^>]*'
+                     curl -sL -A "Mozilla/5.0" -o product.img "<이미지 URL>"
                - 올리브영 페이지는 자동 다운로드가 막혀 있으니 쓰지 마.
-            2. 받은 product.img를 Read로 직접 열어 보고, 아래를 모두 만족할 때만 남겨. 아니면 다른 사진을 찾아.
+            2. `file product.img`로 크기를 보고, Read로 직접 열어 봐서 아래를 모두 만족할 때만 남겨. 아니면 다른 사진을 찾아.
                - 사람·얼굴·손이 없는 제품 단독 사진 (모델 착용컷 금지)
                - 흰색이나 단색 배경, 제품 전체가 잘리지 않고 보임
                - 사진 위 글자·워터마크·스티커 없음
                - 긴 변 1000px 이상. 작으면 같은 제품의 더 큰 사진을 다른 판매처에서 최소 2곳 더 찾아봐 (무신사 _big 이미지, 브랜드 공식몰 상세 이미지 등)
-               끝내 못 찾으면 product.img를 지워.
-            3. thumbnail.json에 저장:
-               {"source": "<제품 사진을 가져온 상품 페이지 URL>", "fallback_prompt": "<영어. 제품 사진이 없을 때 쓸 감성 무드컷 프롬프트. 사람 얼굴·브랜드 로고·글자 금지>"}
+               끝내 못 찾으면 `rm product.img`.
+            3. source.txt에 제품 사진을 가져온 상품 페이지 URL 한 줄만 저장해.
 
       - name: 썸네일 만들기 (제품 사진 배경 제거 + 배경 합성)
         id: thumb
@@ -111,10 +122,10 @@ jobs:
             curl -fsSL "$(jq -r '.[0].result_url' cut.json)" -o cut.png
             $py scripts/compose.py "backgrounds/$bg.jpg" cut.png thumb.jpg
             url="$(hf upload create thumb.jpg --json | jq -r .url)"
-            note="> 썸네일: [실제 제품 사진]($(jq -r .source thumbnail.json))에 배경만 합성했어요."
+            note="> 썸네일: [실제 제품 사진]($(head -n1 source.txt 2>/dev/null))에 배경만 합성했어요."
             if [ "$side" -lt 1000 ]; then note+=$'\n'"> ⚠️ 원본 사진이 작아서(${side}px) 제품을 작게 배치했어요."; fi
           else
-            hf generate create z_image --prompt "$(jq -r .fallback_prompt thumbnail.json)" --wait --json > gen.json
+            hf generate create z_image --prompt "$(cat mood.txt)" --wait --json > gen.json
             url="$(jq -r '.[0].min_result_url' gen.json)" # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 깨진다
             note="> 썸네일: 쓸 만한 제품 사진을 못 찾아 무드컷으로 만들었어요."
           fi
