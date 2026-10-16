@@ -1,0 +1,54 @@
+name: Daily Blog Draft
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 매일 09:00 KST
+  workflow_dispatch:
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 오늘 날짜
+        run: echo "TODAY=$(TZ=Asia/Seoul date '+%Y-%m-%d %a')" >> "$GITHUB_ENV"
+
+      - name: 내 블로그 최근 글 가져오기
+        run: curl -fsSL https://rss.blog.naver.com/oooozzii.xml -o recent-posts.xml || echo "RSS를 가져오지 못했어요"
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --max-turns 20
+            --allowedTools "Read,Write,WebSearch,WebFetch"
+          prompt: |
+            오늘은 ${{ env.TODAY }}이다. 네이버 블로그 "oooozzii"에 올릴 글 초안 한 편을 써서 post.md 파일로 저장해.
+
+            블로그 컨셉: 뷰티 · 패션 · 카페 · 꿀정보. MZ 감성으로 고른 핫템 소개.
+            말투: 해요체에 귀여운 말끝("~에옹", "~더라구요", "~해죠요"), 문단마다 ⸝⸝ ‧₊˚✩ ₍ᐢ.ˬ.ᐢ₎ ଘ(੭ˊᵕˋ)੭ 같은 이모티콘을 가볍게.
+
+            요일별 카테고리: Mon 뷰티 / Tue 패션 / Wed 카페 / Thu 꿀정보 / Fri 뷰티 / Sat 패션 / Sun 카페
+
+            내 블로그 최근 글: recent-posts.xml (네이버 블로그 RSS). 파일이 있으면 먼저 읽고
+            - 말투·문장 길이·이모티콘 쓰는 방식을 이 글들에 맞춰.
+            - 최근 글과 같은 제품·장소·주제는 피해.
+
+            규칙:
+            - WebSearch로 요즘 실제로 화제인 제품·장소를 찾아서 써. 제품명·가격·위치는 검색으로 확인한 것만 쓰고, 글 맨 끝에 "참고한 링크" 목록을 남겨.
+            - 직접 써보거나 가본 것처럼 지어내지 마. 내 후기가 들어갈 자리는 [내 후기: ...]로 비워둬.
+            - 사진 들어갈 자리는 [사진: 설명]으로 표시.
+            - 첫 줄은 "# 글 제목", 그 아래 본문. 본문은 1500자 안팎.
+
+      - name: 이슈로 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="$(head -n1 post.md | sed 's/^# *//')"
+          gh issue create --title "[$TODAY] $title" --body-file post.md
