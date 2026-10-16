@@ -5,14 +5,24 @@ on:
     - cron: "0 0 * * *" # 매일 09:00 KST
   workflow_dispatch:
 
+# Higgsfield 갱신 토큰은 1회용이라 두 실행이 겹치면 한쪽 인증이 끊긴다
+concurrency:
+  group: daily-blog-draft
+  cancel-in-progress: false
+
 jobs:
   draft:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: write
       id-token: write
+    env:
+      HIGGSFIELD_CREDENTIALS_PATH: /tmp/higgsfield/credentials
+      HIGGSFIELD_WORKSPACE_ID: 920c5520-4144-482b-a20f-e4a5d32e7f94
+      HIGGSFIELD_NO_UPDATE_CHECK: "1"
+      HIGGSFIELD_DISABLE_TELEMETRY: "1"
     steps:
       - uses: actions/checkout@v5
 
@@ -48,9 +58,44 @@ jobs:
             - 사진 들어갈 자리는 [사진: 설명]으로 표시.
             - 첫 줄은 "# 글 제목", 그 아래 본문. 본문은 1500자 안팎.
 
+            그리고 thumbnail.txt에 이 글 썸네일용 이미지 생성 프롬프트를 영어 한 문단으로 써.
+            - 글 분위기에 맞는 감성 무드컷 (예: 햇살 드는 화장대, 카페 창가 테이블, 가을 거리).
+            - 특정 브랜드 제품·로고·글자는 넣지 마. 실제 제품과 다른 가짜 제품 사진이 되면 안 돼.
+
+      - name: 썸네일 만들기 (Higgsfield CLI)
+        id: thumb
+        continue-on-error: true
+        env:
+          HIGGSFIELD_CREDENTIALS: ${{ secrets.HIGGSFIELD_CREDENTIALS }}
+        run: |
+          v=1.1.27
+          base="https://github.com/higgsfield-ai/cli/releases/download/v$v"
+          curl -fsSLO "$base/hf_${v}_linux_amd64.tar.gz" -O "$base/checksums.txt"
+          sha256sum -c --ignore-missing checksums.txt
+          tar xzf "hf_${v}_linux_amd64.tar.gz" hf
+
+          mkdir -p "$(dirname "$HIGGSFIELD_CREDENTIALS_PATH")"
+          (umask 077; printf '%s' "$HIGGSFIELD_CREDENTIALS" > "$HIGGSFIELD_CREDENTIALS_PATH")
+
+          url="$(./hf generate create z_image --prompt "$(cat thumbnail.txt)" --wait --json | jq -r '.[0].result_url')"
+          [ -n "$url" ] && [ "$url" != null ] || { echo "이미지 URL 없음"; exit 1; }
+          { head -n1 post.md; printf '\n![썸네일](%s)\n' "$url"; tail -n +2 post.md; } > post.tmp && mv post.tmp post.md
+
+      # 실행 중 갱신된 1회용 토큰을 Secret에 되써야 다음 날 실행이 인증된다
+      - name: Higgsfield 인증 저장
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+        run: |
+          [ -s "$HIGGSFIELD_CREDENTIALS_PATH" ] || { echo "인증 파일 없음 — 다시 로그인 필요할 수 있음"; exit 0; }
+          gh secret set HIGGSFIELD_CREDENTIALS --repo "$GITHUB_REPOSITORY" < "$HIGGSFIELD_CREDENTIALS_PATH"
+
       - name: 이슈로 올리기
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "${{ steps.thumb.outcome }}" = failure ]; then
+            printf '\n> ⚠️ 썸네일 생성 실패 — Actions 로그를 확인해 주세요.\n' >> post.md
+          fi
           title="$(head -n1 post.md | sed 's/^# *//')"
           gh issue create --title "[$TODAY] $title" --body-file post.md
