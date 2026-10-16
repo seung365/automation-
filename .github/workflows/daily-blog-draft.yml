@@ -77,9 +77,12 @@ jobs:
           mkdir -p "$(dirname "$HIGGSFIELD_CREDENTIALS_PATH")"
           (umask 077; printf '%s' "$HIGGSFIELD_CREDENTIALS" > "$HIGGSFIELD_CREDENTIALS_PATH")
 
-          url="$(./hf generate create z_image --prompt "$(cat thumbnail.txt)" --wait --json | jq -r '.[0].result_url')"
+          ./hf generate create z_image --prompt "$(cat thumbnail.txt)" --wait --json > thumb.json
+          url="$(jq -r '.[0].result_url' thumb.json)"
+          min="$(jq -r '.[0].min_result_url' thumb.json)"
           [ -n "$url" ] && [ "$url" != null ] || { echo "이미지 URL 없음"; exit 1; }
-          { head -n1 post.md; printf '\n![썸네일](%s)\n' "$url"; tail -n +2 post.md; } > post.tmp && mv post.tmp post.md
+          # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 메일·이슈에서 깨진다 → 미리보기는 경량 webp, 클릭하면 원본
+          { head -n1 post.md; printf '\n[![썸네일](%s)](%s)\n' "$min" "$url"; tail -n +2 post.md; } > post.tmp && mv post.tmp post.md
 
       # 실행 중 갱신된 1회용 토큰을 Secret에 되써야 다음 날 실행이 인증된다
       - name: Higgsfield 인증 저장
