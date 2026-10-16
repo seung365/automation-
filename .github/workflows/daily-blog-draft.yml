@@ -13,7 +13,7 @@ concurrency:
 jobs:
   draft:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write
@@ -36,7 +36,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
-            --max-turns 20
+            --max-turns 30
             --allowedTools "Read,Write,WebSearch,WebFetch"
           prompt: |
             오늘은 ${{ env.TODAY }}이다. 네이버 블로그 "oooozzii"에 올릴 글 초안 한 편을 써서 post.md 파일로 저장해.
@@ -58,9 +58,22 @@ jobs:
             - 사진 들어갈 자리는 [사진: 설명]으로 표시.
             - 첫 줄은 "# 글 제목", 그 아래 본문. 본문은 1500자 안팎.
 
-            그리고 thumbnail.txt에 이 글 썸네일용 이미지 생성 프롬프트를 영어 한 문단으로 써.
-            - 글 분위기에 맞는 감성 무드컷 (예: 햇살 드는 화장대, 카페 창가 테이블, 가을 거리).
-            - 특정 브랜드 제품·로고·글자는 넣지 마. 실제 제품과 다른 가짜 제품 사진이 되면 안 돼.
+            그리고 썸네일용 thumbnail.json을 써. 이미지 편집 모델에 레퍼런스 사진을 넣어서 만든다.
+
+            1. 레퍼런스 찾기 (WebSearch·WebFetch로 그림 만들기 전에 먼저 찾아):
+               - 제품: 오늘 글의 대표 제품(카페 글이면 대표 메뉴나 공간) 1개의 실제 사진. 브랜드 공식몰·올리브영·무신사 등의 상품 페이지 URL이나 이미지 파일 URL.
+               - 구도: 이 블로그 스타일에 맞는 사진 1장의 URL.
+                 뷰티 = 손바닥 위에 제품을 올린 자연광 사진 / 패션 = 거리 스냅 전신 착장 / 카페 = 테이블 위 음료 클로즈업 / 꿀정보 = 주제에 맞는 생활 사진.
+               - 실제로 열리는 URL만 넣고, 못 찾은 항목은 빼. 올리브영 상품 페이지는 자동 다운로드가 막혀 있으니 쓰지 말고 브랜드 공식몰·무신사·네이버 스토어 페이지나 이미지 파일 URL을 써.
+            2. prompt (영어): references 순서대로 "Image 1", "Image 2"로 가리켜.
+               - 제품 이미지는 모양·색·라벨을 그대로 유지.
+               - 구도 이미지는 구도·조명·분위기만 참고하고 사람·소품·배경은 새로 그려. (뷰티는 흰 장판이 깔린 집 바닥 배경)
+               - 사진 위 글자·워터마크·스티커는 모두 지워. 제품 라벨은 유지.
+               - 보정 필터 없는 폰카 느낌, 자연광.
+            3. fallback_prompt (영어): 레퍼런스 없이 텍스트만으로 만들 감성 무드컷. 특정 브랜드 제품·로고·글자는 넣지 마.
+
+            형식:
+            {"aspect_ratio": "3:4", "references": [{"role": "제품", "url": "..."}, {"role": "구도", "url": "..."}], "prompt": "...", "fallback_prompt": "..."}
 
       - name: 썸네일 만들기 (Higgsfield CLI)
         id: thumb
@@ -77,12 +90,50 @@ jobs:
           mkdir -p "$(dirname "$HIGGSFIELD_CREDENTIALS_PATH")"
           (umask 077; printf '%s' "$HIGGSFIELD_CREDENTIALS" > "$HIGGSFIELD_CREDENTIALS_PATH")
 
-          ./hf generate create z_image --prompt "$(cat thumbnail.txt)" --wait --json > thumb.json
+          # 이미지 URL이면 그대로, 상품 페이지면 og:image를 받아 jpg/png/webp 파일 경로를 출력
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+          get() { curl -fsSL -A "$UA" --max-time 30 --max-filesize 20000000 -o "$2" -w '%{content_type}' "$1"; }
+          fetch() {
+            local ct og
+            ct="$(get "$1" "$2.tmp")" || return 1
+            if [[ "$ct" != image/* ]]; then
+              og="$(grep -oiE '<meta[^>]*og:image[^>]*>' "$2.tmp" | head -1 | grep -oiE 'content="[^"]+"' | cut -d'"' -f2 | sed 's/&amp;/\&/g')"
+              [[ "$og" == //* ]] && og="https:$og"
+              [ -n "$og" ] && ct="$(get "$og" "$2.tmp")" || return 1
+            fi
+            case "$ct" in
+              image/jpeg*) mv "$2.tmp" "$2.jpg"; echo "$2.jpg" ;;
+              image/png*)  mv "$2.tmp" "$2.png"; echo "$2.png" ;;
+              image/webp*) mv "$2.tmp" "$2.webp"; echo "$2.webp" ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # 레퍼런스를 하나라도 못 받으면 prompt 속 "Image N" 번호가 어긋나므로 텍스트 전용으로 전환
+          refs=(); i=0
+          while read -r u; do
+            i=$((i + 1))
+            f="$(fetch "$u" "ref$i")" || { echo "레퍼런스 실패: $u"; refs=(); break; }
+            refs+=(--image "$f")
+          done < <(jq -r '.references[]?.url' thumbnail.json)
+
+          if [ ${#refs[@]} -gt 0 ]; then
+            prompt="$(jq -r .prompt thumbnail.json)"
+            note="$(jq -r '"> 썸네일 레퍼런스: " + ([.references[] | "[\(.role)](\(.url))"] | join(" · ")) + "\n> ⚠️ AI가 제품 라벨 글자를 틀리게 그릴 수 있어요. 발행 전 확인!"' thumbnail.json)"
+          else
+            prompt="$(jq -r .fallback_prompt thumbnail.json)"
+            note="> 썸네일: 레퍼런스를 받지 못해 텍스트만으로 만들었어요."
+          fi
+          [ -n "$prompt" ] && [ "$prompt" != null ] || { echo "프롬프트 없음"; exit 1; }
+
+          ./hf generate create nano_banana_flash --prompt "$prompt" \
+            --aspect_ratio "$(jq -r '.aspect_ratio // "3:4"' thumbnail.json)" --resolution 2k \
+            "${refs[@]}" --wait --json > thumb.json
           url="$(jq -r '.[0].result_url' thumb.json)"
           min="$(jq -r '.[0].min_result_url' thumb.json)"
           [ -n "$url" ] && [ "$url" != null ] || { echo "이미지 URL 없음"; exit 1; }
           # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 메일·이슈에서 깨진다 → 미리보기는 경량 webp, 클릭하면 원본
-          { head -n1 post.md; printf '\n[![썸네일](%s)](%s)\n' "$min" "$url"; tail -n +2 post.md; } > post.tmp && mv post.tmp post.md
+          { head -n1 post.md; printf '\n[![썸네일](%s)](%s)\n\n%s\n' "$min" "$url" "$note"; tail -n +2 post.md; } > post.tmp && mv post.tmp post.md
 
       # 실행 중 갱신된 1회용 토큰을 Secret에 되써야 다음 날 실행이 인증된다
       - name: Higgsfield 인증 저장
