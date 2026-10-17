@@ -141,7 +141,6 @@ jobs:
             hf generate create nano_banana_flash --image product.png --aspect_ratio 1:1 --resolution 2k --prompt "$RECOMPOSE_PROMPT" --wait --json > gen.json
             url="$(jq -r '.[0].min_result_url // .[0].result_url' gen.json)" # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 깨진다
             src="$(head -n1 source.txt 2>/dev/null || true)"
-            note="<sub>출처: ${src:+[}후기 사진${src:+]($src)}을 AI로 재구성한 이미지예요.</sub>"
           else
             hf generate create z_image --prompt "$(cat mood.txt)" --wait --json > gen.json
             url="$(jq -r '.[0].min_result_url' gen.json)" # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 깨진다
