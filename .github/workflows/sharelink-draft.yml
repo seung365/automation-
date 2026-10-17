@@ -1,6 +1,6 @@
 name: Sharelink Draft
 
-# 쉐어링크 이슈(템플릿이 sharelink 라벨을 붙임)가 열리면 살림 블로그 글 초안을 댓글로 단다
+# '오늘의 특가 & 꿀템' 이슈(템플릿이 sharelink 라벨을 붙임)가 열리면 모음 글 초안을 댓글로 단다
 on:
   issues:
     types: [opened]
@@ -20,16 +20,21 @@ jobs:
       - name: 요청 내용 저장
         env:
           BODY: ${{ github.event.issue.body }}
-        run: printf '%s\n' "$BODY" > request.md
+        run: |
+          printf '%s\n' "$BODY" > request.md
+          echo "TODAY=$(TZ=Asia/Seoul date '+%-m월 %-d일')" >> "$GITHUB_ENV"
+          echo "NOW=$(TZ=Asia/Seoul date '+%-m월 %-d일 %H시')" >> "$GITHUB_ENV"
 
       # 공유용 링크라 미리보기 이미지(og:image)가 있다 — 원본 그대로 본문에 넣는다 (토스 정책: 상품 이미지 가공 금지)
       - name: 상품 원본 이미지 찾기
         run: |
-          link="$(grep -oE 'https://toss\.im/[^ )>]+' request.md | head -1 || true)"
           UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
-          img="$(curl -fsSL -A "$UA" --max-time 20 "$link" 2>/dev/null | grep -oiE '<meta[^>]*og:image[^>]*>' | head -1 | grep -oiE 'content="[^"]+"' | cut -d'"' -f2 | sed 's/&amp;/\&/g' || true)"
-          echo "찾은 이미지: ${img:-없음}"
-          echo "PRODUCT_IMAGE=$img" >> "$GITHUB_ENV"
+          : > images.txt
+          grep -oE 'https://toss\.im/[^ )>]+' request.md | while read -r link; do
+            img="$(curl -fsSL -A "$UA" --max-time 20 "$link" 2>/dev/null | grep -oiE '<meta[^>]*og:image[^>]*>' | head -1 | grep -oiE 'content="[^"]+"' | cut -d'"' -f2 | sed 's/&amp;/\&/g' || true)"
+            echo "$link → ${img:-이미지 없음}"
+            echo "$img" >> images.txt
+          done
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -38,29 +43,31 @@ jobs:
             --max-turns 25
             --allowedTools "Read,Write,WebSearch,WebFetch"
           prompt: |
-            request.md에 쉐어링크·상품명·가격·메모가 있다. 이 상품으로 네이버 블로그 글 초안을 써서 post.md에 저장해.
+            request.md에 오늘 소개할 토스쇼핑 상품이 있다: 선착순 특가 1개, 추천 꿀템 0~3개 (각각 쉐어링크와 상품명·가격·구성). 빈 칸은 무시해.
+            이걸로 네이버 블로그 "오늘의 특가 & 꿀템" 모음 글 초안을 써서 post.md에 저장해.
 
-            블로그 컨셉: 자취·살림 가성비템. 검색해서 사러 오는 독자에게 "그래서 진짜 싼가?"를 숫자로 답한다.
-            말투: 차분한 정보형 해요체. "결론부터 말하면 ~예요". 이모지는 거의 쓰지 않는다.
+            블로그 컨셉: 자취·살림 가성비템. 매일 아침 토스쇼핑 특가와 살림 꿀템을 골라 "그래서 진짜 싼가?"를 숫자로 보여준다.
+            말투: 차분한 정보형 해요체. 이모지는 거의 쓰지 않는다.
 
             구성 (순서 지켜):
-            1. 첫 줄 "# 제목" — 검색될 키워드를 넣어 (예: "OOO 가격 정리, 1개당 OOO원이면 살 만할까")
+            1. 첫 줄 "# ${{ env.TODAY }} 토스쇼핑 오늘의 특가 & 살림 꿀템 N가지" (N은 상품 수, 뒤에 대표 상품 키워드를 덧붙여도 돼)
             2. 제목 바로 아래 이 문구 그대로:
                > 이 콘텐츠는 토스쇼핑 쉐어링크 활동의 일환으로, 링크를 통한 구매가 발생하면 일정 수수료를 지급받습니다.
-            3. 한 줄 결론 (개당·1회당 가격 중심)
-            4. {{PRODUCT_IMAGE}} 라고 한 줄만 써 (원본 상품 이미지가 자동으로 들어갈 자리)
-            5. 가격 계산표: 결제 가격 → 총 수량 → 개당(또는 1회당·100ml당) 가격. 계산식을 함께 보여줘.
-               - 가격은 request.md의 값만 써. 비교용 다른 판매처 가격은 WebSearch로 확인된 것만 출처 링크와 함께, 확인 못 하면 비교를 빼.
-            6. 좋은 점 / 아쉬운 점 (상품 정보·공개된 후기 기준)
-            7. 이런 분께 추천
-            8. 구매 링크: [토스쇼핑에서 보기](request.md의 쉐어링크 그대로)
-            9. 참고한 링크 목록
+            3. 그 아래 이 문구 그대로: "${{ env.NOW }} 기준 가격이에요. 선착순 특가는 빨리 품절되거나 가격이 바뀔 수 있어요."
+            4. ## 오늘의 선착순 특가 — 상품명
+               - {{IMAGE_1}} 한 줄
+               - 결제 가격 → 총 수량 → 개당(또는 1회당·100ml당) 가격 계산표와 계산식
+               - 살 만한 이유 2~3줄, 아쉬운 점 1줄
+               - [토스쇼핑에서 보기](쉐어링크 그대로)
+            5. ## 오늘의 살림 꿀템 — 꿀템마다 같은 형식으로 조금 짧게. 이미지 자리는 request.md에 나온 링크 순서대로 {{IMAGE_2}}, {{IMAGE_3}}, {{IMAGE_4}}
+            6. 마무리 한두 줄 ("특가는 매일 아침 바뀌어요" 정도)
+            7. 참고한 링크 목록 (검색으로 확인한 것만)
 
             규칙:
-            - 직접 써본 것처럼 지어내지 마. request.md 메모에 사용 경험이 있으면 그 내용만 쓰고, 없으면 [내 사용 후기: ...] 자리로 비워둬.
-            - 효능·효과 과장 금지. 식품·건강·의료기기 류는 효능 표현을 쓰지 마.
+            - 가격은 request.md 값만 써. 다른 판매처 비교 가격은 WebSearch로 확인된 것만 출처와 함께, 확인 못 하면 비교를 빼.
+            - 직접 써본 것처럼 지어내지 마. 메모에 있는 경험만 쓰고, 없으면 쓰지 마.
+            - "최저가", "역대급"처럼 확인 안 되는 단정 표현과 효능·효과 과장 금지. 식품·건강·의료기기 류는 효능 표현을 쓰지 마.
             - 쉐어링크 URL은 바꾸거나 줄이지 말고 그대로 써.
-            - 본문 1000~1500자.
 
       - name: 초안을 댓글로 달기
         env:
@@ -68,13 +75,17 @@ jobs:
           NUMBER: ${{ github.event.issue.number }}
         run: |
           [ -s post.md ] || { gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "초안을 만들지 못했어요. Actions 로그를 확인해 주세요."; exit 1; }
-          if [ -n "$PRODUCT_IMAGE" ]; then
-            img="![상품 이미지]($PRODUCT_IMAGE)"$'\n'"<sub>토스쇼핑 원본 이미지 그대로예요. [원본 받기]($PRODUCT_IMAGE) — 크롭·합성·편집 없이 올려 주세요.</sub>"
-          else
-            img="[상품 이미지: 자동으로 못 가져왔어요. 토스 앱의 원본 이미지를 그대로 넣어 주세요]"
-          fi
-          body="$(cat post.md)"
-          printf '%s\n' "${body//'{{PRODUCT_IMAGE}}'/$img}" > post.md
+
+          body="$(cat post.md)"; i=0
+          while IFS= read -r url; do
+            i=$((i + 1))
+            [ -n "$url" ] || continue
+            img="![상품 이미지]($url)"$'\n'"<sub>토스쇼핑 원본 이미지 그대로예요. [원본 받기]($url) — 크롭·합성·편집 없이 올려 주세요.</sub>"
+            body="${body//"{{IMAGE_$i}}"/$img}"
+          done < images.txt
+          # 못 찾은 이미지 자리는 안내 문구로
+          printf '%s\n' "$body" | sed -E 's/\{\{IMAGE_[0-9]+\}\}/[상품 이미지: 자동으로 못 가져왔어요. 토스 앱의 원본 이미지를 그대로 넣어 주세요]/g' > post.md
+
           for i in 1 2 3; do
             gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file post.md && exit 0
             echo "댓글 재시도 ($i)"; sleep 15
