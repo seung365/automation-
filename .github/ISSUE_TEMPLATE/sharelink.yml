@@ -1,0 +1,32 @@
+name: 쉐어링크 글 요청
+description: 토스 앱에서 만든 쉐어링크로 살림 블로그 글 초안을 받아요
+title: "[쉐어링크] "
+labels: [sharelink]
+body:
+  - type: input
+    id: link
+    attributes:
+      label: 쉐어링크
+      description: 토스 앱 '팔릴 때마다 돈 버는 링크 공유하기'로 만든 링크 (일반 공유 링크는 수익이 안 잡혀요)
+      placeholder: https://toss.im/_m/...
+    validations:
+      required: true
+  - type: input
+    id: product
+    attributes:
+      label: 상품명
+      description: 앱에 보이는 이름 그대로
+    validations:
+      required: true
+  - type: input
+    id: price
+    attributes:
+      label: 가격과 구성
+      description: 앱에 보이는 결제 가격과 수량 (예 "9,900원 / 100매 x 10팩, 무료배송")
+    validations:
+      required: true
+  - type: textarea
+    id: memo
+    attributes:
+      label: 메모 (선택)
+      description: 직접 써본 느낌, 강조하고 싶은 점 등. 있으면 후기 자리에 반영해요
