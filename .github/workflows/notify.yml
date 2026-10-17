@@ -1,0 +1,19 @@
+name: Notify
+
+# 로컬 스크립트(sharelink/)가 문제를 알릴 때 쓴다. 내가 연 이슈는 나에게 메일이 안 오므로 봇이 이슈를 연다
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ inputs.message }}
+        run: gh issue create --repo "$GITHUB_REPOSITORY" --title "[알림] ${MESSAGE:0:60}" --body "$MESSAGE"

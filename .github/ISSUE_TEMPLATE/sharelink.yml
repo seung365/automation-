@@ -10,7 +10,7 @@ body:
     id: deal_link
     attributes:
       label: 선착순 특가 — 쉐어링크
-      placeholder: https://toss.im/_m/...
+      placeholder: https://toss.shopping/_m/...
     validations:
       required: true
   - type: input

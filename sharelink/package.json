@@ -1,0 +1,12 @@
+{
+  "name": "sharelink-daily",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "daily": "node daily.mjs",
+    "login": "node login.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.49.1"
+  }
+}
