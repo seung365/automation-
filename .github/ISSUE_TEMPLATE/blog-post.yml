@@ -1,0 +1,36 @@
+name: 내 사진으로 블로그 글 요청
+description: 직접 찍은 사진과 가게·제품 정보로 oooozzii 톤 초안을 받아요
+title: "[블로그] "
+labels: [blog-request]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: 카테고리
+      options: [카페, 뷰티, 패션, 꿀정보]
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: 가게·제품 이름
+      placeholder: "예: 성수 OO커피 / 라네즈 주스팝 박스 립 틴트"
+    validations:
+      required: true
+  - type: textarea
+    id: info
+    attributes:
+      label: 정보 (아는 만큼)
+      description: 위치, 메뉴, 가격, 영업시간, 산 곳 등. 비워 두면 검색으로 보충해요
+  - type: textarea
+    id: photos
+    attributes:
+      label: 사진
+      description: 사진을 끌어다 놓으세요. 올린 순서대로 글에 배치돼요. 사진 아래 한 줄 설명을 달면 더 정확해요
+    validations:
+      required: true
+  - type: textarea
+    id: review
+    attributes:
+      label: 내 후기
+      description: 맛·분위기·사용감, 좋았던 점과 아쉬운 점. 여기 쓴 경험만 글에 들어가요
