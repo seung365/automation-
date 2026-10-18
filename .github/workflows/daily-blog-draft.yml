@@ -121,8 +121,10 @@ jobs:
           HIGGSFIELD_CREDENTIALS: ${{ secrets.HIGGSFIELD_CREDENTIALS }}
           RECOMPOSE_PROMPT: >-
             Recreate Image 1 as a new photo from a different camera angle and framing.
-            Keep the same product exactly (shape, colors, label text) and the same swatch or texture color on the skin.
-            A hand holding or using the product, soft natural daylight, unretouched smartphone photo look, simple light background.
+            Keep the same product or menu item exactly (shape, colors, label text, toppings).
+            A hand holding or using it, soft natural daylight, unretouched smartphone photo look, simple light background.
+            Only if Image 1 already shows a swatch or texture on the skin, keep that same color;
+            never add swatches, marks or makeup on the skin that are not in Image 1.
             Do not reproduce the original framing or background. No faces, no text overlays, no watermarks.
           RECOMPOSE_PROMPT_FASHION: >-
             Recreate Image 1 as a new outfit photo from a different camera angle and framing.
