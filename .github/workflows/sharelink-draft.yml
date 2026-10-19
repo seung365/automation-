@@ -4,10 +4,16 @@ name: Sharelink Draft
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "초안을 다시 쓸 이슈 번호"
+        required: true
 
 jobs:
   draft:
-    if: contains(github.event.issue.labels.*.name, 'sharelink') && github.event.issue.user.login == github.repository_owner
+    # 수동 실행은 이미 있는 이슈로 초안을 다시 쓴다 (실행 권한이 있는 사람만 누를 수 있다)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'sharelink') && github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -19,9 +25,10 @@ jobs:
 
       - name: 요청 내용 저장
         env:
-          BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue }}
         run: |
-          printf '%s\n' "$BODY" > request.md
+          gh issue view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > request.md
           echo "TODAY=$(TZ=Asia/Seoul date '+%-m월 %-d일')" >> "$GITHUB_ENV"
           echo "NOW=$(TZ=Asia/Seoul date '+%-m월 %-d일 %H시')" >> "$GITHUB_ENV"
 
@@ -101,6 +108,7 @@ jobs:
         continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true # deal.md 없이 끝나는 원인 확인용
           claude_args: |
             --max-turns 25
             --allowedTools "Read,Write,WebSearch,WebFetch"
@@ -141,7 +149,7 @@ jobs:
       - name: 초안을 댓글로 달기
         env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.issue.number }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue }}
         run: |
           failed=0
           # post.md = 정보 글, deal.md = 모음 글. 각각 댓글 하나씩

@@ -4,10 +4,15 @@ name: Blog Request Draft
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "초안을 다시 쓸 이슈 번호"
+        required: true
 
 jobs:
   draft:
-    if: contains(github.event.issue.labels.*.name, 'blog-request') && github.event.issue.user.login == github.repository_owner
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'blog-request') && github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -19,15 +24,16 @@ jobs:
 
       - name: 요청 내용 저장
         env:
-          BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue }}
         run: |
-          printf '%s\n' "$BODY" > request.md
+          gh issue view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > request.md
           curl -fsSL https://rss.blog.naver.com/oooozzii.xml -o recent-posts.xml || echo "RSS를 가져오지 못했어요"
 
-      # 비공개 레포 첨부 사진은 로그인해야 열려서 토큰으로 받는다. 못 받으면 사진 설명만으로 쓴다
+      # 비공개 레포 첨부 사진은 개인 토큰이라야 열린다 (Actions 기본 토큰은 404). 못 받으면 사진 설명만으로 쓴다
       - name: 첨부 사진 받기
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
         run: |
           mkdir -p photos
           grep -oE 'https://github\.com/user-attachments/assets/[0-9a-f-]+' request.md | awk '!seen[$0]++' > photo-urls.txt || true
@@ -74,7 +80,7 @@ jobs:
       - name: 초안을 댓글로 달기
         env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.issue.number }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue }}
         run: |
           [ -s post.md ] || { gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "초안을 만들지 못했어요. Actions 로그를 확인해 주세요."; exit 1; }
 

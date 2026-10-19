@@ -84,7 +84,17 @@ try {
     ),
   ].join('\n');
   fs.writeFileSync('/tmp/sharelink-issue.md', body);
-  const url = gh(['issue', 'create', '--repo', REPO, '--label', 'sharelink', '--title', `[오늘의 특가] ${today} 자동`, '--body-file', '/tmp/sharelink-issue.md']);
+  // 맥이 잠자기에서 깨자마자 돌면 네트워크가 늦게 붙어 GitHub 호출이 끊긴다 → 30초 간격으로 5번까지
+  let url;
+  for (let attempt = 1; !url; attempt++) {
+    try {
+      url = gh(['issue', 'create', '--repo', REPO, '--label', 'sharelink', '--title', `[오늘의 특가] ${today} 자동`, '--body-file', '/tmp/sharelink-issue.md']);
+    } catch (e) {
+      if (attempt === 5) throw e;
+      console.error(`이슈 생성 재시도 (${attempt})`, e.message.split('\n')[0]);
+      await new Promise(resolve => setTimeout(resolve, 30_000));
+    }
+  }
   console.log('이슈 생성:', url.trim());
 
   await saveState(ctx);
