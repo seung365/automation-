@@ -3,6 +3,8 @@ name: Image On Comment
 # 초안 이슈에 "/image [추가 요청]" 댓글을 달면 썸네일을 새로 뽑아 댓글로 단다
 #   /image              → 지금 썸네일을 다른 구도로 다시 재구성
 #   /image 흰 배경으로   → 뒤에 쓴 말을 프롬프트에 덧붙여 재구성
+#   /image (이미지 첨부) → 첨부한 이미지를 기준으로 재구성
+#   /image <URL>        → 이미지 주소, 또는 상품 페이지의 og:image를 기준으로 재구성
 #   /image 무드컷        → 제목 분위기의 무드컷 (썸네일이 없는 이슈도 무드컷)
 on:
   issue_comment:
@@ -15,7 +17,7 @@ concurrency:
 
 jobs:
   image:
-    # 공개 레포라 남이 단 /image로 크레딧이 나가지 않게 내 댓글만
+    # 협업자가 단 /image로 크레딧이 나가지 않게 내 댓글만
     if: >-
       !github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/image') &&
@@ -45,6 +47,7 @@ jobs:
           TITLE: ${{ github.event.issue.title }}
           BODY: ${{ github.event.issue.body }}
           COMMENT: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           # ponytail: daily-blog-draft.yml의 재구성 프롬프트 복사본. 바꿀 땐 두 곳 다 고친다
           RECOMPOSE_PROMPT: >-
             Recreate Image 1 as a new photo from a different camera angle and framing.
@@ -59,8 +62,28 @@ jobs:
             A person wearing it, framed from the neck down, natural daylight on a city street or a bright room, unretouched smartphone photo look.
             Do not reproduce the original framing or background. No faces, no text overlays, no watermarks.
         run: |
-          extra="$(printf '%s' "${COMMENT#/image}" | tr '\n' ' ' | sed -E 's/^ +| +$//g')"
-          src="$(printf '%s' "$BODY" | grep -oE '!\[썸네일\]\(https://[^)]+\)' | head -1 | sed -E 's/.*\((.*)\)/\1/' || true)"
+          # 프롬프트에 덧붙일 말: 첨부 태그·URL은 뺀다
+          extra="$(printf '%s' "${COMMENT#/image}" | tr '\n' ' ' | sed -E 's/<img[^>]*>//g; s#https?://[^ )>"]+##g; s/!\[[^]]*\]\(\)//g; s/  +/ /g; s/^ +| +$//g')"
+          # 기준 이미지: 댓글 첨부 > 댓글 URL > 이슈 본문 썸네일
+          if [[ "$COMMENT" == *user-attachments/assets/* ]]; then
+            # 비공개 레포 첨부는 인증 없이 404 → API의 body_html에 든 서명 주소(5분 유효)로 받는다
+            src="$(gh api -H 'Accept: application/vnd.github.html+json' "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body_html \
+              | grep -oE 'https://private-user-images\.githubusercontent\.com/[^"]+' | head -1 | sed 's/&amp;/\&/g' || true)"
+          else
+            src="$(printf '%s' "$COMMENT" | grep -oE 'https?://[^ )>"]+' | head -1 || true)"
+          fi
+          [ -n "$src" ] || src="$(printf '%s' "$BODY" | grep -oE '!\[썸네일\]\(https://[^)]+\)' | head -1 | sed -E 's/.*\((.*)\)/\1/' || true)"
+
+          # 받은 게 HTML(상품 페이지)이면 og:image를 따라가서 다시 받는다
+          fetch_source() {
+            local UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+            curl -fsSL -A "$UA" --max-time 30 -o source.img "$1" || return 1
+            if head -c 1024 source.img | grep -qiE '<!doctype|<html'; then
+              local og
+              og="$(grep -oiE '<meta[^>]*og:image[^>]*>' source.img | head -1 | grep -oiE 'content="[^"]+"' | cut -d'"' -f2 | sed 's/&amp;/\&/g')"
+              [ -n "$og" ] && curl -fsSL -A "$UA" --max-time 30 -o source.img "$og" || return 1
+            fi
+          }
           # 제목이 "[2026-10-19 Tue] ..." 꼴이라 패션 요일(Tue·Sat)은 착샷 프롬프트로
           case "$TITLE" in "["*" Tue]"*|"["*" Sat]"*) RECOMPOSE_PROMPT="$RECOMPOSE_PROMPT_FASHION" ;; esac
 
@@ -76,7 +99,7 @@ jobs:
           # ponytail: CLI가 응답 없이 멈추는 경우가 있어 3분 제한 + 1회 재시도
           hf() { for _ in 1 2; do timeout 180 ./hf "$@" && return 0; echo "hf 재시도"; done; return 1; }
 
-          if [ -n "$src" ] && [[ "$extra" != *무드컷* ]] && curl -fsSL -o source.img "$src" && /tmp/py/bin/python -c "
+          if [ -n "$src" ] && [[ "$extra" != *무드컷* ]] && fetch_source "$src" && /tmp/py/bin/python -c "
           from PIL import Image
           im = Image.open('source.img').convert('RGBA')
           Image.alpha_composite(Image.new('RGBA', im.size, 'white'), im).convert('RGB').save('source.png')"; then
