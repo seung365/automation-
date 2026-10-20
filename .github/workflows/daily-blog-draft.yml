@@ -11,7 +11,7 @@ on:
 
 # Higgsfield 갱신 토큰은 1회용이라 두 실행이 겹치면 한쪽 인증이 끊긴다
 concurrency:
-  group: daily-blog-draft
+  group: higgsfield # blog-request의 패션 재구성과 같은 1회용 토큰을 쓴다
   cancel-in-progress: false
 
 jobs:

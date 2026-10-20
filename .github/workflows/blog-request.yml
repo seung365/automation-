@@ -10,6 +10,11 @@ on:
         description: "초안을 다시 쓸 이슈 번호"
         required: true
 
+# Higgsfield 갱신 토큰은 1회용이라 daily-blog-draft와 겹치면 한쪽 인증이 끊긴다
+concurrency:
+  group: higgsfield
+  cancel-in-progress: false
+
 jobs:
   draft:
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'blog-request') && github.event.issue.user.login == github.repository_owner)
@@ -19,6 +24,11 @@ jobs:
       contents: read
       issues: write
       id-token: write
+    env:
+      HIGGSFIELD_CREDENTIALS_PATH: /tmp/higgsfield/credentials
+      HIGGSFIELD_WORKSPACE_ID: 920c5520-4144-482b-a20f-e4a5d32e7f94
+      HIGGSFIELD_NO_UPDATE_CHECK: "1"
+      HIGGSFIELD_DISABLE_TELEMETRY: "1"
     steps:
       - uses: actions/checkout@v5
 
@@ -29,11 +39,16 @@ jobs:
         run: |
           gh issue view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > request.md
           curl -fsSL https://rss.blog.naver.com/oooozzii.xml -o recent-posts.xml || echo "RSS를 가져오지 못했어요"
+          echo "CATEGORY=$(awk '/^### 카테고리/{getline; getline; print; exit}' request.md)" >> "$GITHUB_ENV"
 
-      # 비공개 레포 첨부 사진은 개인 토큰이라야 열린다 (Actions 기본 토큰은 404). 못 받으면 사진 설명만으로 쓴다
+      # 지도 링크가 있으면 메뉴·가격·영업시간을 네이버 플레이스에서 직접 읽는다 (웹 검색으로는 거의 안 나온다)
+      - name: 네이버 플레이스 정보 받기
+        run: python3 -I scripts/naver_place.py request.md
+
+      # 비공개 레포 첨부 사진은 내 계정 OAuth 토큰이라야 열린다 (Actions 기본 토큰·GH_SECRETS_PAT는 404). 못 받으면 사진 설명만으로 쓴다
       - name: 첨부 사진 받기
         env:
-          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+          GH_TOKEN: ${{ secrets.ATTACHMENTS_TOKEN }}
         run: |
           mkdir -p photos
           grep -oE 'https://github\.com/user-attachments/assets/[0-9a-f-]+' request.md | awk '!seen[$0]++' > photo-urls.txt || true
@@ -49,6 +64,57 @@ jobs:
             rm -f photos/raw; echo "사진 $i 못 받음: $url"
           done < photo-urls.txt
           ls photos
+
+      # 패션 글은 내가 입은 착장 그대로, 사람만 다른 인물로 다시 그린다 (내 얼굴이 블로그에 안 나가게)
+      - name: 패션 착장 AI 재구성
+        if: env.CATEGORY == '패션'
+        continue-on-error: true
+        env:
+          HIGGSFIELD_CREDENTIALS: ${{ secrets.HIGGSFIELD_CREDENTIALS }}
+          OUTFIT_PROMPT: >-
+            Recreate Image 1 as a new outfit photo of a different person.
+            Keep the outfit exactly the same: every garment, color, fabric, pattern, fit, length, accessories, bag and shoes.
+            Change the person completely: a different face, different hairstyle and hair color, so they clearly look like someone else,
+            with a similar body proportion so the fit reads the same.
+            A different but similar background (city street, cafe or bright room) and a different camera angle,
+            natural daylight, unretouched smartphone photo look. No text, no watermarks, no added logos.
+        run: |
+          v=1.1.27
+          base="https://github.com/higgsfield-ai/cli/releases/download/v$v"
+          curl -fsSLO "$base/hf_${v}_linux_amd64.tar.gz" -O "$base/checksums.txt"
+          sha256sum -c --ignore-missing checksums.txt
+          tar xzf "hf_${v}_linux_amd64.tar.gz" hf
+
+          mkdir -p "$(dirname "$HIGGSFIELD_CREDENTIALS_PATH")"
+          (umask 077; printf '%s' "$HIGGSFIELD_CREDENTIALS" > "$HIGGSFIELD_CREDENTIALS_PATH")
+
+          # ponytail: CLI가 응답 없이 멈추는 경우가 있어 3분 제한 + 1회 재시도
+          hf() { for _ in 1 2; do timeout 180 ./hf "$@" && return 0; echo "hf 재시도"; done; return 1; }
+
+          # ai-urls.txt의 N번째 줄 = N번째 사진의 재구성 결과 (실패하면 빈 줄 → 원본 사진을 쓴다)
+          : > ai-urls.txt
+          for i in $(seq 1 "$(wc -l < photo-urls.txt)"); do
+            src="$(ls photos/"$i".* 2>/dev/null | head -1)"; url=""
+            if [ -n "$src" ]; then
+              # 세로 착샷 비율을 먼저 시도하고, 모델이 거부하면 정사각형으로
+              for ratio in 3:4 1:1; do
+                hf generate create nano_banana_flash --image "$src" --aspect_ratio "$ratio" --resolution 2k --prompt "$OUTFIT_PROMPT" --wait --json > gen.json || continue
+                url="$(jq -r '.[0].min_result_url // .[0].result_url // empty' gen.json)" # 원본 PNG(~6MB)는 GitHub 이미지 프록시 한도를 넘어 깨진다
+                [ -n "$url" ] && break
+              done
+            fi
+            echo "사진 $i 재구성: ${url:-실패}"
+            echo "$url" >> ai-urls.txt
+          done
+
+      # 실행 중 갱신된 1회용 토큰을 Secret에 되써야 다음 실행이 인증된다
+      - name: Higgsfield 인증 저장
+        if: always() && env.CATEGORY == '패션'
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+        run: |
+          [ -s "$HIGGSFIELD_CREDENTIALS_PATH" ] || { echo "인증 파일 없음 — 다시 로그인 필요할 수 있음"; exit 0; }
+          gh secret set HIGGSFIELD_CREDENTIALS --repo "$GITHUB_REPOSITORY" < "$HIGGSFIELD_CREDENTIALS_PATH"
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -67,6 +133,12 @@ jobs:
             - 사진에 보이는 것(메뉴, 인테리어, 제품, 발색 등)을 글 흐름에 맞게 순서대로 배치해. 사진 자리는 {{PHOTO_N}} 한 줄 + 바로 아래 짧은 사진 설명 한 줄.
             - 모든 사진을 한 번씩 써. 사진에 없는 걸 있다고 쓰지 마.
             - photos/가 비어 있거나 일부가 없으면 request.md에 적힌 사진 설명으로 배치하고, 없는 사진 자리는 [사진 N: 설명]으로 둬.
+            - 카테고리가 패션이면 사진 속 사람은 블로그에 다른 인물로 바뀌어 올라간다. 사람의 얼굴·머리·생김새는 쓰지 말고 옷·코디·핏만 써.
+
+            가게 정보: place.json이 있으면 네이버 플레이스에서 읽은 메뉴·가격·영업시간·리뷰 키워드다. 먼저 읽고
+            - 영업시간·브레이크타임, 대표 메뉴와 가격을 글에 정리해 (출처는 "참고한 링크"에 place.json의 source).
+            - 후기에 먹은 메뉴가 없으면 메뉴판 정리까지만 하고, 내가 뭘 먹었는지는 지어내지 마.
+            - reviewKeywords·visitorReviews는 "방문자 리뷰에서 많이 나온 말" 정도로만 쓰고 내 경험처럼 쓰지 마.
 
             규칙:
             - request.md의 정보와 후기가 글의 중심이다. 후기에 쓴 경험은 내 말투로 살려서 쓰고, 후기에 없는 경험(맛, 사용감, 분위기 평가)은 지어내지 마.
@@ -84,11 +156,17 @@ jobs:
         run: |
           [ -s post.md ] || { gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "초안을 만들지 못했어요. Actions 로그를 확인해 주세요."; exit 1; }
 
-          # {{PHOTO_N}} 자리에 내가 올린 사진을 그대로 보여 준다 (이슈와 같은 레포라 댓글에서도 열린다)
+          # {{PHOTO_N}} 자리에 사진을 넣는다. 패션 재구성본이 있으면 그걸, 없으면 내가 올린 원본 (이슈와 같은 레포라 댓글에서도 열린다)
           body="$(cat post.md)"; i=0
           while IFS= read -r url; do
             i=$((i + 1))
-            body="${body//"{{PHOTO_$i}}"/![사진 $i]($url)}"
+            ai="$(sed -n "${i}p" ai-urls.txt 2>/dev/null)"
+            if [ -n "$ai" ]; then
+              img="![사진 $i]($ai)"$'\n'"※ 내 착장을 바탕으로 AI가 다른 인물로 다시 그린 이미지예요."
+            else
+              img="![사진 $i]($url)"
+            fi
+            body="${body//"{{PHOTO_$i}}"/$img}"
           done < photo-urls.txt
           printf '%s\n' "$body" | sed -E 's/\{\{PHOTO_([0-9]+)\}\}/[사진 \1]/g' > post.md
 
