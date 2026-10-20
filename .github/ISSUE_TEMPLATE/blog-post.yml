@@ -7,7 +7,7 @@ body:
     id: category
     attributes:
       label: 카테고리
-      options: [카페, 뷰티, 패션, 꿀정보]
+      options: [카페, 맛집, 뷰티, 패션, 꿀정보]
     validations:
       required: true
   - type: input

@@ -47,10 +47,10 @@ jobs:
           prompt: |
             오늘은 ${{ env.TODAY }}이다. 네이버 블로그 "oooozzii"에 올릴 글 초안 한 편을 써서 post.md 파일로 저장해.
 
-            블로그 컨셉: 뷰티 · 패션 · 카페 · 꿀정보. MZ 감성으로 고른 핫템 소개.
+            블로그 컨셉: 뷰티 · 패션 · 카페 · 맛집 · 꿀정보. MZ 감성으로 고른 핫템 소개.
             말투: 해요체에 귀여운 말끝("~에옹", "~더라구요", "~해죠요"), 문단마다 ⸝⸝ ‧₊˚✩ ₍ᐢ.ˬ.ᐢ₎ ଘ(੭ˊᵕˋ)੭ 같은 이모티콘을 가볍게.
 
-            요일별 카테고리: Mon 뷰티 / Tue 패션 / Wed 카페 / Thu 꿀정보 / Fri 뷰티 / Sat 패션 / Sun 카페
+            요일별 카테고리: Mon 뷰티 / Tue 패션 / Wed 카페 / Thu 꿀정보 / Fri 맛집 / Sat 패션 / Sun 카페
 
             내 블로그 최근 글: recent-posts.xml (네이버 블로그 RSS). 파일이 있으면 먼저 읽고
             - 말투·문장 길이·이모티콘 쓰는 방식을 이 글들에 맞춰.
@@ -80,7 +80,7 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Write,WebSearch,WebFetch,Bash(curl:*),Bash(grep:*),Bash(head:*),Bash(sed:*),Bash(cut:*),Bash(sort:*),Bash(tr:*),Bash(file:*),Bash(ls:*),Bash(/tmp/py/bin/python scripts/preview.py),Bash(rm candidate.img),Bash(mv candidate.img product.img)"
           prompt: |
-            post.md는 오늘 블로그 글 초안이다. 이 글의 대표 제품(카페 글이면 대표 메뉴)을 실제로 사용한 후기 사진 1장을 준비해. 이 사진을 AI로 구도를 바꿔 재구성해서 썸네일로 쓴다.
+            post.md는 오늘 블로그 글 초안이다. 이 글의 대표 제품(카페·맛집 글이면 대표 메뉴)을 실제로 사용한 후기 사진 1장을 준비해. 이 사진을 AI로 구도를 바꿔 재구성해서 썸네일로 쓴다.
 
             오늘은 ${{ env.TODAY }}이다. 요일이 Tue·Sat이면 패션 글이라 후기 사진 대신 실제로 입은 착샷을 찾아.
 
