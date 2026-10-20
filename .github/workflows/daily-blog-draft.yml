@@ -47,10 +47,10 @@ jobs:
           prompt: |
             오늘은 ${{ env.TODAY }}이다. 네이버 블로그 "oooozzii"에 올릴 글 초안 한 편을 써서 post.md 파일로 저장해.
 
-            블로그 컨셉: 뷰티 · 패션 · 카페 · 맛집 · 꿀정보. MZ 감성으로 고른 핫템 소개.
+            블로그 컨셉: 뷰티 · 카페 · 맛집 · 꿀정보. MZ 감성으로 고른 핫템 소개.
             말투: 해요체에 귀여운 말끝("~에옹", "~더라구요", "~해죠요"), 문단마다 ⸝⸝ ‧₊˚✩ ₍ᐢ.ˬ.ᐢ₎ ଘ(੭ˊᵕˋ)੭ 같은 이모티콘을 가볍게.
 
-            요일별 카테고리: Mon 뷰티 / Tue 패션 / Wed 카페 / Thu 꿀정보 / Fri 맛집 / Sat 패션 / Sun 카페
+            요일별 카테고리: Mon 뷰티 / Tue 맛집 / Wed 카페 / Thu 꿀정보 / Fri 뷰티 / Sat 맛집 / Sun 카페
 
             내 블로그 최근 글: recent-posts.xml (네이버 블로그 RSS). 파일이 있으면 먼저 읽고
             - 말투·문장 길이·이모티콘 쓰는 방식을 이 글들에 맞춰.
@@ -82,20 +82,17 @@ jobs:
           prompt: |
             post.md는 오늘 블로그 글 초안이다. 이 글의 대표 제품(카페·맛집 글이면 대표 메뉴)을 실제로 사용한 후기 사진 1장을 준비해. 이 사진을 AI로 구도를 바꿔 재구성해서 썸네일로 쓴다.
 
-            오늘은 ${{ env.TODAY }}이다. 요일이 Tue·Sat이면 패션 글이라 후기 사진 대신 실제로 입은 착샷을 찾아.
-
-            1. WebSearch로 "<제품명> 후기", "<제품명> 발색", "<제품명> 사용" (패션 글이면 "<제품명> 착샷", "<제품명> 코디", "<제품명> 후기") 등을 검색해 실제 사용 사진이 있는 후기 글(블로그·커뮤니티·리뷰)을 찾고, 페이지에서 이미지 URL을 찾아 curl로 candidate.img에 받아.
+            1. WebSearch로 "<제품명> 후기", "<제품명> 발색", "<제품명> 사용" 등을 검색해 실제 사용 사진이 있는 후기 글(블로그·커뮤니티·리뷰)을 찾고, 페이지에서 이미지 URL을 찾아 curl로 candidate.img에 받아.
                예: curl -sL -A "Mozilla/5.0" "<페이지>" | grep -oiE 'https://[^"]+\.(jpg|jpeg|png|webp)' | head -20
                    curl -sL -A "Mozilla/5.0" -o candidate.img "<이미지 URL>"
                네이버 블로그는 본문이 iframe이라 https://m.blog.naver.com/<아이디>/<글번호> 모바일 주소로 열어야 이미지 URL이 보여.
                네이버 이미지 URL은 끝의 ?type=을 w800으로 바꿔 받아 (w80_blur는 흐린 미리보기라 안 돼).
-               무신사·29CM 같은 쇼핑몰 후기 페이지는 자바스크립트로 그려져서 curl로는 이미지가 안 나와. 패션 착샷은 네이버 블로그 후기부터 찾아.
+               쇼핑몰 후기 페이지는 자바스크립트로 그려져서 curl로는 이미지가 안 나와. 네이버 블로그 후기부터 찾아.
                cd나 ;로 여러 명령을 이어 붙이면 거부되니 명령은 하나씩(파이프는 괜찮아) 실행해.
                후기 페이지를 5곳 이상 확인하기 전에는 포기하지 마.
             2. `/tmp/py/bin/python scripts/preview.py`를 실행하면 크기가 출력되고 candidate_preview.jpg(축소본)가 생겨. 이걸 Read로 직접 열어 봐서 아래를 모두 만족하는지 확인해. (원본을 줄이는 다른 방법은 쓰지 마)
                - 그 제품을 실제로 쓰는 사진: 제품이 보이고 발색·텍스처·사용 모습이 보임 (손등 발색, 손에 든 컷 등)
-                 패션 글이면 사람이 그 옷을 실제로 입은 착샷이어야 해. 바닥에 펼쳐 놓은 옷, 옷걸이·마네킹 컷, 판매처 모델컷은 안 돼.
-               - 사람 얼굴 없음 (손은 괜찮아. 착샷은 얼굴이 잘렸거나 휴대폰으로 가려진 거울 셀카면 괜찮아)
+               - 사람 얼굴 없음 (손은 괜찮아)
                - 워터마크·작성자 표시·글자가 박힌 사진은 쓰지 마. 지우지 말고 다른 사진을 찾아.
                - 긴 변 600px 이상
             3. 통과하면 바로 이 두 가지를 해:
@@ -126,15 +123,7 @@ jobs:
             Only if Image 1 already shows a swatch or texture on the skin, keep that same color;
             never add swatches, marks or makeup on the skin that are not in Image 1.
             Do not reproduce the original framing or background. No faces, no text overlays, no watermarks.
-          RECOMPOSE_PROMPT_FASHION: >-
-            Recreate Image 1 as a new outfit photo from a different camera angle and framing.
-            Keep the same garment exactly (cut, color, fabric, pockets, details).
-            A person wearing it, framed from the neck down, natural daylight on a city street or a bright room, unretouched smartphone photo look.
-            Do not reproduce the original framing or background. No faces, no text overlays, no watermarks.
         run: |
-          # 패션 요일(Tue·Sat)은 착샷이라 손 컷 대신 입은 모습으로 재구성한다
-          case "$TODAY" in *Tue|*Sat) RECOMPOSE_PROMPT="$RECOMPOSE_PROMPT_FASHION" ;; esac
-
           v=1.1.27
           base="https://github.com/higgsfield-ai/cli/releases/download/v$v"
           curl -fsSLO "$base/hf_${v}_linux_amd64.tar.gz" -O "$base/checksums.txt"
