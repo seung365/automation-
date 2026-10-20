@@ -160,7 +160,7 @@ jobs:
           body="$(cat post.md)"; i=0
           while IFS= read -r url; do
             i=$((i + 1))
-            ai="$(sed -n "${i}p" ai-urls.txt 2>/dev/null)"
+            ai="$(sed -n "${i}p" ai-urls.txt 2>/dev/null || true)" # 패션이 아니면 ai-urls.txt가 없다
             if [ -n "$ai" ]; then
               img="![사진 $i]($ai)"$'\n'"※ 내 착장을 바탕으로 AI가 다른 인물로 다시 그린 이미지예요."
             else
