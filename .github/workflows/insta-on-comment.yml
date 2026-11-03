@@ -31,7 +31,7 @@ jobs:
       COMMENT: ${{ github.event.comment.body }}
       COMMENT_ID: ${{ github.event.comment.id }}
       IG_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }} # 시스템 사용자 토큰 (만료 없음)
-      MEDIA_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+      MEDIA_TOKEN: ${{ secrets.INSTA_MEDIA_TOKEN }} # simple-init Contents 쓰기 전용
       IG: https://graph.facebook.com/v25.0
       IG_USER_ID: "17841468422113542" # @oooo.zzii
     steps:
