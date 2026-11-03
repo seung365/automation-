@@ -8,7 +8,7 @@
 | 시각 (KST) | 무엇이 | 결과 |
 |---|---|---|
 | 06:30 | 내 맥 launchd → `sharelink/daily.mjs` | 토스 쉐어링크 특가·꿀템 후보 링크 발급 → 후보 이슈 |
-| 07:00 | `benefit-daily` | 육아 혜택 카드뉴스 5장 + 인스타 캡션 이슈 (라벨 `benefit`) |
+| 07:00 | `benefit-daily` | 육아 혜택 카드뉴스 5장 + 인스타 캡션 이슈 (라벨 `benefit`). **경고가 없으면 바로 @oooo.zzii에 게시** |
 | 09:00 | `daily-blog-draft` | 요일별 블로그 초안 + 썸네일 + 인스타 캡션 이슈 |
 
 ## 이슈 댓글 명령 (내 댓글만 동작)
@@ -40,6 +40,8 @@
 2. Claude가 원문(`detail.json`)의 사실만으로 `card.json`(카드 문구)과 `insta.txt`(캡션)를 쓴다. 형식은 `card.example.json`.
 3. `render.py` — HTML 템플릿 → 헤드리스 Chrome으로 1080×1350 PNG. 매달 받는 혜택의 금액표(`calc`)는 코드가 계산하고, 표지 숫자 불일치·글 넘침은 경고로 남긴다.
 4. `build-body.sh` — JPEG로 바꿔 `seung365/simple-init`(공개)에 올리고 이슈 본문을 만든다. 본문에는 카드, ⚠️ 경고, 원문 링크, 접힌 `card.json`(다음 `/claude` 수정용), `## 인스타 캡션`이 들어간다.
+
+5. 경고(글 넘침·표지 숫자 불일치·`확인 필요`·해시태그 5개 초과)가 없으면 `insta-on-comment`를 수동 실행으로 불러 바로 캐러셀로 게시한다. 경고가 있으면 이슈에 안내 댓글만 남기고 멈추니, 확인하거나 `/claude`로 고친 뒤 `/insta`.
 
 같은 혜택을 다시 만들려면 이전 이슈를 닫고 `benefit` 라벨을 뗀 뒤 `Benefit Daily Card`를 수동 실행한다.
 

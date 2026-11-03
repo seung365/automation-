@@ -6,9 +6,15 @@ name: Insta On Comment
 #   /insta <URL>        → 그 이미지 주소
 # 캡션을 바꾸려면 그 섹션이 든 본문·댓글을 직접 고친 뒤 /insta
 # benefit 라벨 이슈(benefit-daily)는 본문의 카드 전부를 캐러셀로 올린다
+# benefit-daily는 경고가 없으면 /insta 없이 workflow_dispatch(number)로 바로 올린다
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: "올릴 혜택 카드 이슈 번호"
+        required: true
 
 concurrency:
   group: insta
@@ -18,6 +24,7 @@ jobs:
   post:
     # 내 댓글만, 이미 올린 이슈(insta 라벨)는 다시 올리지 않는다
     if: >-
+      github.event_name == 'workflow_dispatch' ||
       !github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/insta') &&
       github.event.comment.user.login == github.repository_owner &&
@@ -28,16 +35,17 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
-      NUMBER: ${{ github.event.issue.number }}
+      NUMBER: ${{ github.event.issue.number || inputs.number }}
       COMMENT: ${{ github.event.comment.body }}
       COMMENT_ID: ${{ github.event.comment.id }}
       IG_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }} # 시스템 사용자 토큰 (만료 없음)
       MEDIA_TOKEN: ${{ secrets.INSTA_MEDIA_TOKEN }} # simple-init Contents 쓰기 전용
       IG: https://graph.facebook.com/v25.0
       IG_USER_ID: "17841468422113542" # @oooo.zzii
-      BENEFIT: ${{ contains(github.event.issue.labels.*.name, 'benefit') }}
+      BENEFIT: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'benefit') }} # 수동 실행은 혜택 카드 전용
     steps:
-      - run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null
+      - if: github.event_name == 'issue_comment'
+        run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null
       - run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==12.0.0
 
       - name: 인스타에 올리기
