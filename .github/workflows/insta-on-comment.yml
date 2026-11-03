@@ -38,7 +38,7 @@ jobs:
       BENEFIT: ${{ contains(github.event.issue.labels.*.name, 'benefit') }}
     steps:
       - run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null
-      - run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
+      - run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==12.0.0
 
       - name: 인스타에 올리기
         run: |

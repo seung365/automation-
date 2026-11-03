@@ -54,7 +54,7 @@ jobs:
           MEDIA_TOKEN: ${{ secrets.INSTA_MEDIA_TOKEN }} # simple-init Contents 쓰기 전용
         run: |
           python3 benefit/render.py card.json out # ubuntu 러너에 google-chrome 기본 설치
-          python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
+          python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==12.0.0
           id="${PICK##* }"
           : > body.md
           for png in $(ls out/*.png | sort -V); do

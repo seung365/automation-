@@ -38,7 +38,7 @@ jobs:
         run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/${{ github.event.comment.id }}/reactions" -f content=eyes > /dev/null
 
       - name: 이미지 도구 준비
-        run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
+        run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==12.0.0
 
       - name: 썸네일 다시 만들기
         id: gen
