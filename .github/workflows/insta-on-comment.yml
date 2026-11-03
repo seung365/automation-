@@ -1,0 +1,81 @@
+name: Insta On Comment
+
+# 초안 이슈에 "/insta" 댓글을 달면 "## 인스타 캡션" 섹션과 이미지로 인스타(@oooo.zzii)에 올린다
+#   /insta              → 이슈·댓글의 마지막 이미지 (썸네일, /image 결과)
+#   /insta (이미지 첨부) → 첨부한 이미지
+#   /insta <URL>        → 그 이미지 주소
+# 캡션을 바꾸려면 그 섹션이 든 본문·댓글을 직접 고친 뒤 /insta
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: insta
+  cancel-in-progress: false
+
+jobs:
+  post:
+    # 내 댓글만, 이미 올린 이슈(insta 라벨)는 다시 올리지 않는다
+    if: >-
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/insta') &&
+      github.event.comment.user.login == github.repository_owner &&
+      !contains(github.event.issue.labels.*.name, 'insta')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NUMBER: ${{ github.event.issue.number }}
+      COMMENT: ${{ github.event.comment.body }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      IG_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }} # 시스템 사용자 토큰 (만료 없음)
+      MEDIA_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+      IG: https://graph.facebook.com/v25.0
+      IG_USER_ID: "17841468422113542" # @oooo.zzii
+    steps:
+      - run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null
+      - run: python3 -m venv /tmp/py && /tmp/py/bin/pip install -q pillow==11.0.0
+
+      - name: 인스타에 올리기
+        run: |
+          fail() { gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "> ⚠️ $1"; exit 1; }
+          gh issue view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json body,comments > issue.json
+
+          # 캡션: "## 인스타 캡션"이 든 마지막 글(본문 또는 초안 댓글)에서 그 아래 전부
+          jq -r '[.body, .comments[].body] | map(select(test("(^|\n)## 인스타 캡션"))) | last // ""' issue.json \
+            | sed -n '/^## 인스타 캡션/,$p' | tail -n +2 > caption.txt
+          [ -s caption.txt ] || fail "'## 인스타 캡션' 섹션이 없어요."
+          if grep -qE '\[[^]]*\]|확인 필요' caption.txt; then fail "캡션에 빈칸이나 '확인 필요'가 남아 있어요. 고친 뒤 다시 /insta 해 주세요."; fi
+
+          # 이미지: 댓글 첨부 > 댓글 URL > 이슈·댓글의 마지막 이미지 (비공개 첨부 링크는 인증 없이 못 받으니 제외)
+          if [[ "$COMMENT" == *user-attachments/assets/* ]]; then
+            # 비공개 레포 첨부는 인증 없이 404 → API의 body_html에 든 서명 주소(5분 유효)로 받는다
+            src="$(gh api -H 'Accept: application/vnd.github.html+json' "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body_html \
+              | grep -oE 'https://private-user-images\.githubusercontent\.com/[^"]+' | head -1 | sed 's/&amp;/\&/g' || true)"
+          else
+            src="$(printf '%s' "$COMMENT" | grep -oE 'https?://[^ )>"]+' | head -1 || true)"
+          fi
+          [ -n "$src" ] || src="$(jq -r '[.body, .comments[].body | scan("!\\[[^\\]]*\\]\\((https://[^)]+)\\)")[0] | select(test("user-attachments") | not)] | last // ""' issue.json)"
+          [ -n "$src" ] || fail "올릴 이미지가 없어요. /insta 댓글에 사진을 첨부해 주세요."
+
+          # 인스타는 공개 URL의 JPEG만 받는다 → JPEG로 바꿔 공개 저장소에 올린다
+          # ponytail: 비율은 그대로 둔다 (썸네일이 1:1). 4:5~1.91:1을 벗어난 사진이 거절되면 그때 여백 채우기를 넣는다
+          curl -fsSL --max-time 30 -o src.img "$src" || fail "이미지를 받지 못했어요."
+          /tmp/py/bin/python -c "from PIL import Image; Image.open('src.img').convert('RGB').save('post.jpg', quality=92)"
+          path="$NUMBER-$COMMENT_ID.jpg"
+          jq -n --arg m "issue #$NUMBER" --rawfile c <(base64 -w0 post.jpg) '{message: $m, content: $c}' > put.json
+          GH_TOKEN="$MEDIA_TOKEN" gh api -X PUT "repos/seung365/insta-media/contents/$path" --input put.json > /dev/null || fail "이미지 업로드에 실패했어요."
+          img="https://raw.githubusercontent.com/seung365/insta-media/main/$path"
+
+          ig() { curl -sS --fail-with-body --max-time 60 "$@" -d "access_token=$IG_TOKEN"; }
+          cid="$(ig "$IG/$IG_USER_ID/media" --data-urlencode "image_url=$img" --data-urlencode caption@caption.txt | jq -r .id)" || fail "인스타 게시물 준비에 실패했어요. Actions 로그를 확인해 주세요."
+          for _ in $(seq 20); do
+            [ "$(ig -G "$IG/$cid" -d fields=status_code | jq -r .status_code)" = FINISHED ] && break; sleep 3
+          done
+          mid="$(ig "$IG/$IG_USER_ID/media_publish" -d "creation_id=$cid" | jq -r .id)" || fail "인스타 게시에 실패했어요. Actions 로그를 확인해 주세요."
+          link="$(ig -G "$IG/$mid" -d fields=permalink | jq -r .permalink)"
+
+          gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label insta
+          gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "인스타에 올렸어요 → $link"
