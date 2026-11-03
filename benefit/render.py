@@ -21,8 +21,8 @@ h2{font-size:76px;font-weight:800;letter-spacing:-2px;white-space:pre-line;line-
 ul{list-style:none;padding:0;display:flex;flex-direction:column;gap:28px}
 li{font-size:46px;font-weight:600;line-height:1.4;background:#fff;border-radius:28px;padding:36px 44px;white-space:pre-line;
   box-shadow:0 4px 0 #F1E3D3}
-.row{display:flex;justify-content:space-between;align-items:baseline;background:#fff;border-radius:28px;padding:44px 52px;box-shadow:0 4px 0 #F1E3D3}
-.row b{font-size:48px;font-weight:600;color:#8A6F5A}.row strong{font-size:84px;font-weight:800;color:#E8833A}
+.row{display:flex;flex-direction:column;gap:6px;background:#fff;border-radius:28px;padding:36px 48px;box-shadow:0 4px 0 #F1E3D3}
+.row b{font-size:40px;font-weight:600;color:#8A6F5A}.row strong{font-size:68px;font-weight:800;color:#E8833A;line-height:1.2;white-space:pre-line}
 .note{font-size:38px;color:#8A6F5A}
 footer{display:flex;justify-content:space-between;font-size:26px;color:#A8917D}
 """

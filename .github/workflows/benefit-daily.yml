@@ -40,8 +40,10 @@ jobs:
 
             규칙:
             - detail.json에 있는 사실만 쓴다. 금액·기한·대상을 추측하거나 다른 데서 가져오지 마.
+            - "최대 ○원"은 원문의 모든 경우 중 최댓값일 때만 써. 특례(한부모·맞벌이 등)가 더 크면 "일반 기준"이라고 밝혀.
             - 원문이 모호하면 그 자리에 "확인 필요"라고 써. (캡션에 남아 있으면 게시가 막힌다)
             - serviceId는 detail.json의 서비스ID, source는 "정부24 공공서비스 정보 · <수정일시> 수정 기준".
+            - amount의 rows는 [조건, 값]이고 값은 한 줄 15자 이내 (예: "월 250만 원"). 조건 설명은 조건 칸이나 note로.
             - 표지 title은 두 줄 이내, 금액이 있으면 금액을 앞세워. 슬라이드 4~6장, 상자 하나에 2줄 이내(줄바꿈은 \n).
             - 정책 평가·정치색 금지, "아무도 안 알려주는" 같은 과장 금지. 해요체.
 
@@ -69,6 +71,6 @@ jobs:
           if grep -q '확인 필요' card.json; then
             printf '\n> ⚠️ 카드에 "확인 필요"가 있어요. 원문 확인 후 올려 주세요.\n' >> body.md
           fi
-          printf '\n원문: %s\n\n## 인스타 캡션\n%s\n' "$(jq -r .상세조회URL detail.json)" "$(cat insta.txt)" >> body.md
+          printf '\n원문: %s\n\n## 인스타 캡션\n%s\n' "$(jq -r '.["상세조회URL"]' detail.json)" "$(sed 's/~/～/g' insta.txt)" >> body.md # ~ 두 개는 GitHub에서 취소선이 된다
           gh label create benefit --force > /dev/null
           gh issue create --title "[혜택] $PICK" --label benefit --body-file body.md
