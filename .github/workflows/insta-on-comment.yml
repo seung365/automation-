@@ -65,7 +65,9 @@ jobs:
           curl -fsSL --max-time 30 -o src.img "$src" || fail "이미지를 받지 못했어요."
           /tmp/py/bin/python -c "from PIL import Image; Image.open('src.img').convert('RGB').save('post.jpg', quality=92)"
           path="$NUMBER-$COMMENT_ID.jpg"
-          jq -n --arg m "issue #$NUMBER" --rawfile c <(base64 -w0 post.jpg) '{message: $m, content: $c}' > put.json
+          # 내 계정과 연결 안 된 작성자로 커밋 → 잔디·프로필 활동에 안 잡힌다
+          jq -n --arg m "issue #$NUMBER" --rawfile c <(base64 -w0 post.jpg) \
+            '{message: $m, content: $c, committer: {name: "insta-bot", email: "insta-bot@oooozzii.invalid"}}' > put.json
           GH_TOKEN="$MEDIA_TOKEN" gh api -X PUT "repos/seung365/insta-media/contents/$path" --input put.json > /dev/null || fail "이미지 업로드에 실패했어요."
           img="https://raw.githubusercontent.com/seung365/insta-media/main/$path"
 
