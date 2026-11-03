@@ -68,8 +68,8 @@ jobs:
           # 내 계정과 연결 안 된 작성자로 커밋 → 잔디·프로필 활동에 안 잡힌다
           jq -n --arg m "issue #$NUMBER" --rawfile c <(base64 -w0 post.jpg) \
             '{message: $m, content: $c, committer: {name: "insta-bot", email: "insta-bot@oooozzii.invalid"}}' > put.json
-          GH_TOKEN="$MEDIA_TOKEN" gh api -X PUT "repos/seung365/insta-media/contents/$path" --input put.json > /dev/null || fail "이미지 업로드에 실패했어요."
-          img="https://raw.githubusercontent.com/seung365/insta-media/main/$path"
+          GH_TOKEN="$MEDIA_TOKEN" gh api -X PUT "repos/seung365/simple-init/contents/$path" --input put.json > /dev/null || fail "이미지 업로드에 실패했어요."
+          img="https://raw.githubusercontent.com/seung365/simple-init/main/$path"
 
           ig() { curl -sS --fail-with-body --max-time 60 "$@" -d "access_token=$IG_TOKEN"; }
           cid="$(ig "$IG/$IG_USER_ID/media" --data-urlencode "image_url=$img" --data-urlencode caption@caption.txt | jq -r .id)" || fail "인스타 게시물 준비에 실패했어요. Actions 로그를 확인해 주세요."
