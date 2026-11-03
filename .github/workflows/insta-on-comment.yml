@@ -54,8 +54,8 @@ jobs:
           ig() { curl -sS --fail-with-body --max-time 60 "$@" -d "access_token=$IG_TOKEN"; }
 
           if [ "$BENEFIT" = true ]; then
-            # 혜택 카드: 본문 카드(이미 simple-init의 공개 JPEG)를 순서대로 캐러셀로
-            kids="$(jq -r '.body | scan("!\\[[^\\]]*\\]\\((https://raw\\.githubusercontent\\.com/[^)]+)\\)")[0]' issue.json \
+            # 혜택 카드: 가장 최근 카드 묶음(본문 또는 /claude 수정 댓글, 이미 simple-init의 공개 JPEG)을 순서대로 캐러셀로
+            kids="$(jq -r '[.body, .comments[].body] | map(select(test("simple-init/main/benefit/"))) | last // "" | scan("!\\[[^\\]]*\\]\\((https://raw\\.githubusercontent\\.com/[^)]+)\\)")[0]' issue.json \
               | while read -r u; do ig "$IG/$IG_USER_ID/media" --data-urlencode "image_url=$u" -d is_carousel_item=true | jq -r .id; done | paste -sd, -)"
             [ -n "$kids" ] && [[ "$kids" != *null* ]] || fail "카드 이미지 준비에 실패했어요. Actions 로그를 확인해 주세요."
             cid="$(ig "$IG/$IG_USER_ID/media" -d media_type=CAROUSEL -d "children=$kids" --data-urlencode caption@caption.txt | jq -r .id)" || fail "캐러셀 준비에 실패했어요. Actions 로그를 확인해 주세요."
