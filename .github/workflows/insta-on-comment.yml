@@ -59,7 +59,8 @@ jobs:
           [ -s caption.txt ] || fail "'## 인스타 캡션' 섹션이 없어요."
           if grep -qE '\[[^]]*\]|확인 필요' caption.txt; then fail "캡션에 빈칸이나 '확인 필요'가 남아 있어요. 고친 뒤 다시 /insta 해 주세요."; fi
 
-          ig() { curl -sS --fail-with-body --max-time 60 "$@" -d "access_token=$IG_TOKEN"; }
+          # 실패 응답 본문은 jq가 삼키므로 로그에도 남긴다 (토큰은 응답에 안 들어간다)
+          ig() { local r; r="$(curl -sS --fail-with-body --max-time 60 "$@" -d "access_token=$IG_TOKEN")" || { echo "IG API: $r" >&2; echo "$r"; return 1; }; echo "$r"; }
 
           if [ "$BENEFIT" = true ]; then
             # 혜택 카드: 가장 최근 카드 묶음(본문 또는 /claude 수정 댓글, 이미 simple-init의 공개 JPEG)을 순서대로 캐러셀로
